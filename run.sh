@@ -1,10 +1,17 @@
 #!/bin/bash
-commands=("od" "tr" "strip" "rustc" "cargo")
-missing=$(for cmd in "${commands[@]}"; do
+
+echo "WARNING: This encryption does not support shells that require input reading mechanisms such as 'read'."
+echo ""
+
+commands=("base64" "od" "tr" "strip" "rustc" "cargo")
+missing=""
+
+for cmd in "${commands[@]}"; do
 	if ! command -v "$cmd" &>/dev/null; then
-		echo "'$cmd' not found."
+		missing+="'$cmd' not found. "
 	fi
-done)
+done
+
 if [ -n "$missing" ]; then
 	echo "Some required commands are missing:"
 	echo "$missing"
@@ -13,42 +20,67 @@ if [ -n "$missing" ]; then
 else
 	echo "All required commands are installed."
 fi
+
 ulimit -s unlimited >/dev/null 2>&1
+
 echo ""
-echo "Ri-Crypt 1.1 by Github: RiProG-id"
+echo "Ri-Crypt 2.0 by Github: RiProG-id"
 echo ""
 echo "Example:"
 echo "/sdcard/in/example.sh"
 printf "Enter the file location: "
 read -r input
+
 if [ -f "$input" ]; then
+	interpreter=$(awk 'NR==1 && /^#!/ {gsub(".*/","",$1); print $1}' "$input")
+	if [[ "$interpreter" == "bash" || "$interpreter" == "sh" ]]; then
+		echo "Interpreter found: $interpreter"
+	else
+		echo "No bash or sh interpreter found."
+		exit 1
+	fi
+
 	basename=$(basename -- "$input")
 	basename_no_ext="${basename%.*}"
 	dirname=$(dirname -- "$input")
+	basefile="$dirname/$basename_no_ext.base"
 	xorfile="$dirname/$basename_no_ext.xor"
 	rustfile="$dirname/$basename_no_ext.rs"
 	binfile="$dirname/$basename_no_ext"
-	echo "Reading the input file..."
-	command=$(cat "$input")
+
+	echo "Encoding file content in Base64..."
+	printf "eval 'echo \"" >$basefile
+	printf "$(cat $input | base64 -w 0)" >>$basefile
+	printf "\" | base64 -d | $interpreter'" >>$basefile
+	echo "Base64 encoding completed and saved to $basefile."
+
+	echo "Reading the encoded file..."
+	command=$(cat "$basefile")
 	command_length=${#command}
-	echo "File read successfully."
-	echo "Length of the command: $command_length characters."
+	echo "File read successfully. Length of the command: $command_length characters."
+
 	echo "Generating a random key..."
 	key=$(od -An -N1 -tx1 /dev/urandom | tr -d ' ')
 	echo "Key generated: 0x$key"
+
 	echo "Encrypting the command..."
-	encrypted=()
+	encrypted=""
 	for ((i = 0; i < command_length; i++)); do
 		ascii=$(printf "%d" "'${command:$i:1}")
 		encrypted_byte=$(printf "%02x" $((ascii ^ 0x$key)))
-		encrypted+=($encrypted_byte)
+		encrypted+="$encrypted_byte "
 	done
-	echo "Writing encrypted data..."
-	echo "let key: u8 = 0x$key;" >"$xorfile"
-	encrypted_command_formatted=$(printf "0x%s, " "${encrypted[@]}" | sed 's/, $//')
-	echo "let encrypted_command: [u8; $command_length] = [$encrypted_command_formatted];" >>"$xorfile"
-	echo "Encrypted data written successfully."
-	echo "Generating Rust code..."
+	echo "Command encryption completed."
+
+	echo "Writing encrypted data to $xorfile..."
+	{
+		echo "let key: u8 = 0x$key;"
+		encrypted_command_formatted=$(printf "0x%s, " $encrypted | sed 's/, $//')
+		echo "let encrypted_command: [u8; $command_length] = [$encrypted_command_formatted];"
+	} >"$xorfile"
+	echo "Encrypted data saved to $xorfile."
+
+	echo "Generating Rust code in $rustfile..."
 	{
 		echo 'use std::process::Command;'
 		echo ''
@@ -73,18 +105,22 @@ if [ -f "$input" ]; then
 		echo '    }'
 		echo '}'
 	} >"$rustfile"
-	echo "Rust code generated successfully."
+	echo "Rust code saved to $rustfile."
+
 	echo "Formatting Rust code..."
 	rustfmt "$rustfile"
-	echo "Compiling Rust code..."
+	echo "Rust code formatted."
+
+	echo "Compiling Rust code to $binfile..."
 	rustc -C opt-level=3 "$rustfile" -o "$binfile"
-	echo "Rust code formatted successfully."
+	echo "Rust code compiled to $binfile."
+
 	echo "Stripping binary..."
 	strip "$binfile"
 	echo "Binary stripped successfully."
+
 	echo "Removing temporary files..."
-	rm "$xorfile"
-	rm "$rustfile"
+	rm "$basefile" "$xorfile" "$rustfile"
 	echo "Temporary files removed successfully."
 else
 	echo "File does not exist."

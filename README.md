@@ -2,6 +2,10 @@
 
 Ri-Crypt is a tool for encrypting shell commands using XOR with a random secret key. It generates Rust code to decrypt and execute those commands, then compiles the Rust code and places the binary in the same location as the input file.
 
+## Warning
+
+**Encryption does not support shells that use input readers like `read`.**
+
 ## Setup
 
 To install the required dependencies, follow these steps:
