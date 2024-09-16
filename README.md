@@ -21,11 +21,8 @@ To install the required dependencies, follow these steps:
 3. Make the setup script executable and run it:
 
     ```bash
-    chmod +x setup.sh
-    ./setup.sh
+    bash setup.sh
     ```
-
-   The script will check and install the necessary dependencies, including `od`, `tr`, `strip`, and Rust. Ensure you run this script with appropriate permissions.
 
 ## Using Ri-Crypt
 
